@@ -29,7 +29,7 @@ import java.util.Map;
  * Should be called OSMMap since it represents the map/network
  * but that's a bit redundant
  *
- * OSM data is read via {@link OsmFileReader}. After reading the file
+ * OSM data is read via {@link OsmXmlFileReader}. After reading the file
  * new elements cannot be added directly (indirectly via handlers).
  *
  * @author polettif
@@ -42,25 +42,25 @@ public interface OsmData {
 
 	/**
 	 * Creates the node/way/relation objects from parsed data
-	 * and connects them. Called in {@link OsmFileReader}
+	 * and connects them. Called in {@link OsmXmlFileReader}
 	 */
 	void buildMap();
 
 
 	/**
-	 * Defines how a node should be handled in {@link OsmFileReader}
+	 * Defines how a node should be handled in {@link OsmXmlFileReader}
 	 */
-	void handleParsedNode(OsmFileReader.ParsedNode parsedNode);
+	void handleParsedNode(OsmXmlFileReader.ParsedNode parsedNode);
 
 	/**
-	 * Defines how a way should be handled in {@link OsmFileReader}
+	 * Defines how a way should be handled in {@link OsmXmlFileReader}
 	 */
-	void handleParsedWay(OsmFileReader.ParsedWay parsedWay);
+	void handleParsedWay(OsmXmlFileReader.ParsedWay parsedWay);
 
 	/**
-	 * Defines how a relation should be handled in {@link OsmFileReader}
+	 * Defines how a relation should be handled in {@link OsmXmlFileReader}
 	 */
-	void handleParsedRelation(OsmFileReader.ParsedRelation parsedRelation);
+	void handleParsedRelation(OsmXmlFileReader.ParsedRelation parsedRelation);
 
 
 	/**

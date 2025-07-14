@@ -99,7 +99,7 @@ public class ZVVexample {
 
 		// 1.2 load osm file
 		OsmData osmData = new OsmDataImpl(createDefaultPTFilter());
-		new OsmFileReader(osmData).readFile(osmName);
+		new OsmXmlFileReader(osmData).readFile(osmName);
 
 		// 1.3 initiate and run converter
 		OsmMultimodalNetworkConverter osmConverter = new OsmMultimodalNetworkConverter(osmData);

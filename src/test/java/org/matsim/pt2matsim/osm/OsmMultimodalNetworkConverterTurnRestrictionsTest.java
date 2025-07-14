@@ -20,7 +20,7 @@ import org.matsim.pt2matsim.config.OsmConverterConfigGroup;
 import org.matsim.pt2matsim.config.OsmConverterConfigGroup.RoutableSubnetworkParams;
 import org.matsim.pt2matsim.osm.lib.OsmData;
 import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
-import org.matsim.pt2matsim.osm.lib.OsmFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
 import org.matsim.pt2matsim.tools.NetworkTools;
 
 class OsmMultimodalNetworkConverterTurnRestrictionsTest {
@@ -263,7 +263,7 @@ class OsmMultimodalNetworkConverterTurnRestrictionsTest {
 
 		// read OSM file
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		// convert
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);

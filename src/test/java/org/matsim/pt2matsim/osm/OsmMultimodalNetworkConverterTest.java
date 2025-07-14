@@ -14,7 +14,7 @@ import org.matsim.api.core.v01.network.Network;
 import org.matsim.pt2matsim.config.OsmConverterConfigGroup;
 import org.matsim.pt2matsim.osm.lib.OsmData;
 import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
-import org.matsim.pt2matsim.osm.lib.OsmFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
 import org.matsim.pt2matsim.run.CreateDefaultOsmConfig;
 
 /**
@@ -37,7 +37,7 @@ public class OsmMultimodalNetworkConverterTest {
 
 		// read OSM file
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		// convert
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);
@@ -306,7 +306,7 @@ public class OsmMultimodalNetworkConverterTest {
 
 		// read OSM file
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		// convert
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);
@@ -323,7 +323,7 @@ public class OsmMultimodalNetworkConverterTest {
 		osmConfig.setOsmFile("test/osm/Belgrade.osm");
 
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);
 		converter.convert(osmConfig);

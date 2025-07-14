@@ -25,7 +25,7 @@ import org.matsim.pt.transitSchedule.api.TransitSchedule;
 import org.matsim.pt2matsim.osm.OsmTransitScheduleConverter;
 import org.matsim.pt2matsim.osm.lib.OsmData;
 import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
-import org.matsim.pt2matsim.osm.lib.OsmFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
 import org.matsim.pt2matsim.tools.ScheduleTools;
 
 /**
@@ -58,7 +58,7 @@ public final class Osm2TransitSchedule {
 
 		// load osm file
 		OsmData osmData = new OsmDataImpl();
-		new OsmFileReader(osmData).readFile(osmFile);
+		new OsmXmlFileReader(osmData).readFile(osmFile);
 
 		// convert osm data
 		new OsmTransitScheduleConverter(osmData).convert(schedule, ct);

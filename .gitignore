@@ -26,3 +26,4 @@ test/gtfs-feed-rewrite/
 test/stib-mivb-gtfs/
 
 test/Gtfs2TransitScheduleIT/output/
+/input/

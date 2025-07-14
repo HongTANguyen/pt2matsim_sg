@@ -9,14 +9,14 @@ import org.matsim.pt2matsim.osm.lib.Osm;
 import org.matsim.pt2matsim.osm.lib.Osm.Relation;
 import org.matsim.pt2matsim.osm.lib.OsmData;
 import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
-import org.matsim.pt2matsim.osm.lib.OsmFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
 
 class RelationWithMultipleRolesTest {
 
 	@Test
 	void testMultipleRoles() {
 		OsmData osmData = new OsmDataImpl();
-		new OsmFileReader(osmData).readFile("test/osm/relation_multiple_roles.osm");
+		new OsmXmlFileReader(osmData).readFile("test/osm/relation_multiple_roles.osm");
 
 		Id<Osm.Relation> relationId = Id.create("-79", Osm.Relation.class);
 		Id<Osm.Way> wayId = Id.create("-1279", Osm.Way.class);

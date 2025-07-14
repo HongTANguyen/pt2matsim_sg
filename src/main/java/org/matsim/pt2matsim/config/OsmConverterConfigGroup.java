@@ -242,14 +242,15 @@ public class OsmConverterConfigGroup extends ReflectiveConfigGroup {
 
 	@Override
 	public ConfigGroup createParameterSet(final String type) {
-		switch(type) {
-			case OsmWayParams.SET_NAME :
-				return new OsmWayParams();
-			case RoutableSubnetworkParams.SET_NAME:
-			    return new RoutableSubnetworkParams();
-			default:
-				throw new IllegalArgumentException("Unknown parameterset name!");
-		}
+        return switch (type) {
+            case OsmWayParams.SET_NAME -> new OsmWayParams();
+            case RoutableSubnetworkParams.SET_NAME -> new RoutableSubnetworkParams();
+            default -> throw new IllegalArgumentException("Unknown parameterset name!");
+        };
+	}
+
+	public String getOsmFileType() {
+		return this.osmFile == null ? null : this.osmFile.substring(this.osmFile.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
 	}
 
 	/**

@@ -10,7 +10,7 @@ import org.matsim.core.network.NetworkUtils;
 import org.matsim.pt2matsim.config.OsmConverterConfigGroup;
 import org.matsim.pt2matsim.osm.lib.OsmData;
 import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
-import org.matsim.pt2matsim.osm.lib.OsmFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -42,7 +42,7 @@ class RoutableSubnetworkTest {
 
 		// read OSM file
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		// I) Convert without a network layer for car_passenger
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);
@@ -103,7 +103,7 @@ class RoutableSubnetworkTest {
 
 		// read OSM file
 		OsmData osm = new OsmDataImpl();
-		new OsmFileReader(osm).readFile(osmConfig.getOsmFile());
+		new OsmXmlFileReader(osm).readFile(osmConfig.getOsmFile());
 
 		// I) Convert without a network layer for car_passenger
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osm);

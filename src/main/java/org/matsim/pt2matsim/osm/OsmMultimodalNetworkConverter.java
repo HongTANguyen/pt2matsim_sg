@@ -21,7 +21,11 @@
 
 package org.matsim.pt2matsim.osm;
 
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,7 +67,17 @@ import org.matsim.pt2matsim.osm.LinkGeometryExporter.LinkDefinition;
 import org.matsim.pt2matsim.osm.lib.AllowedTagsFilter;
 import org.matsim.pt2matsim.osm.lib.Osm;
 import org.matsim.pt2matsim.osm.lib.OsmData;
+import org.matsim.pt2matsim.osm.lib.OsmXmlFileReader;
+import org.matsim.pt2matsim.osm.lib.OsmDataImpl;
 import org.matsim.pt2matsim.tools.NetworkTools;
+
+// Import PBF related libraries
+import com.slimjars.dist.gnu.trove.iterator.TLongObjectIterator;
+import de.topobyte.osm4j.core.access.OsmIterator;
+import de.topobyte.osm4j.core.dataset.InMemoryMapDataSet;
+import de.topobyte.osm4j.core.dataset.MapDataSetLoader;
+import de.topobyte.osm4j.core.model.iface.*;
+import de.topobyte.osm4j.pbf.seq.PbfIterator;
 
 import com.google.common.base.Verify;
 
@@ -89,11 +103,12 @@ public class OsmMultimodalNetworkConverter {
 
 	private static final String OSM_TURN_RESTRICTION_ATTRIBUTE_NAME = OsmTurnRestriction.class.getSimpleName();
 	private static final String OSM_SPECIAL_LANE = "_spec";
+
 	/**
 	 * mode == null means "all modes"
 	 */
 	record OsmTurnRestriction(@Nullable Set<String> modes, List<Id<Osm.Way>> nextWayIds,
-			@Nullable Id<Osm.Node> viaNodeId, RestrictionType restrictionType) {
+							  @Nullable Id<Osm.Node> viaNodeId, RestrictionType restrictionType) {
 
 		enum RestrictionType {
 			PROHIBITIVE, // no_*
@@ -169,7 +184,7 @@ public class OsmMultimodalNetworkConverter {
 			addDisallowedNextLinksAttributes();
 		}
 		cleanNetwork();
-		if(config.getKeepTagsAsAttributes()) addAttributes();
+		if (config.getKeepTagsAsAttributes()) addAttributes();
 
 		if (this.config.getOutputDetailedLinkGeometryFile() != null) {
 			try {
@@ -186,7 +201,7 @@ public class OsmMultimodalNetworkConverter {
 	 * reads the params from the config to different containers.
 	 */
 	private void readWayParams() {
-		for(ConfigGroup e : config.getParameterSets(OsmConverterConfigGroup.OsmWayParams.SET_NAME)) {
+		for (ConfigGroup e : config.getParameterSets(OsmConverterConfigGroup.OsmWayParams.SET_NAME)) {
 			OsmConverterConfigGroup.OsmWayParams w = (OsmConverterConfigGroup.OsmWayParams) e;
 			wayParams.putIfAbsent(w.getOsmKey(), new HashMap<>());
 			wayParams.get(w.getOsmKey()).put(w.getOsmValue(), w);
@@ -200,7 +215,7 @@ public class OsmMultimodalNetworkConverter {
 
 		log.info("Converting OSM to MATSim network...");
 
-		if(transformation == null) {
+		if (transformation == null) {
 			transformation = TransformationFactory.getCoordinateTransformation("WGS84", "WGS84");
 		}
 
@@ -213,22 +228,22 @@ public class OsmMultimodalNetworkConverter {
 		AllowedTagsFilter serviceRailTracksFilter = new AllowedTagsFilter();
 		serviceRailTracksFilter.add(Osm.ElementType.WAY, Osm.Key.SERVICE, null);
 
-		for(Osm.Node node : nodes.values()) {
+		for (Osm.Node node : nodes.values()) {
 			node.setCoord(transformation.transform(node.getCoord()));
 		}
 
 		// remove ways without default params
 		log.info("remove unusable ways...");
-		for(Osm.Way way : new HashSet<>(ways.values())) {
-			if(getWayDefaultParams(way) == null) {
+		for (Osm.Way way : new HashSet<>(ways.values())) {
+			if (getWayDefaultParams(way) == null) {
 				osmData.removeWay(way.getId());
 			}
 		}
 
 		// remove unused nodes
 		log.info("remove nodes without ways...");
-		for(Osm.Node n : new HashSet<>(nodes.values())) {
-			if(n.getWays().size() == 0) {
+		for (Osm.Node n : new HashSet<>(nodes.values())) {
+			if (n.getWays().isEmpty()) {
 				osmData.removeNode(n.getId());
 			}
 		}
@@ -238,21 +253,21 @@ public class OsmMultimodalNetworkConverter {
 		log.info("cleaning network...");
 
 		// Clean network:
-		if(!config.getKeepPaths()) {
+		if (!config.getKeepPaths()) {
 			// marked nodes as unused where only one way leads through
 			// but only if this doesn't lead to links longer than MAX_LINKLENGTH
-			for(Osm.Way way : ways.values()) {
+			for (Osm.Way way : ways.values()) {
 
 				double length = 0.0;
-				Osm.Node lastNode = way.getNodes().get(0);
-				for(int i = 1; i < way.getNodes().size() - 1; i++) {
+				Osm.Node lastNode = way.getNodes().getFirst();
+				for (int i = 1; i < way.getNodes().size() - 1; i++) {
 					Osm.Node node = way.getNodes().get(i);
-					if(node.getWays().size() > 1) {
+					if (node.getWays().size() > 1) {
 						length = 0.0;
 						lastNode = node;
-					} else if(node.getWays().size() == 1) {
+					} else if (node.getWays().size() == 1) {
 						length += CoordUtils.calcEuclideanDistance(lastNode.getCoord(), node.getCoord());
-						if(length <= config.getMaxLinkLength()) {
+						if (length <= config.getMaxLinkLength()) {
 							nodesToIgnore.add(node);
 							lastNode = node;
 						} else {
@@ -264,19 +279,19 @@ public class OsmMultimodalNetworkConverter {
 					}
 				}
 				// fix for some roundabouts with identical first and last node
-				if(way.getNodes().get(0).equals(way.getNodes().get(way.getNodes().size() - 1))) {
-					nodesToIgnore.remove(way.getNodes().get(0));
+				if (way.getNodes().getFirst().equals(way.getNodes().getLast())) {
+					nodesToIgnore.remove(way.getNodes().getFirst());
 				}
 			}
 			// verify we did not mark nodes as unused that build a loop
-			for(Osm.Way way : ways.values()) {
+			for (Osm.Way way : ways.values()) {
 				int prevRealNodeIndex = 0;
 				Osm.Node prevRealNode = way.getNodes().get(prevRealNodeIndex);
 
-				for(int i = 1; i < way.getNodes().size(); i++) {
+				for (int i = 1; i < way.getNodes().size(); i++) {
 					Osm.Node node = way.getNodes().get(i);
-					if(nodesToIgnore.contains(node)) {
-						if(prevRealNode == node) {
+					if (nodesToIgnore.contains(node)) {
+						if (prevRealNode == node) {
 							/* We detected a loop between two "real" nodes.
 							 * Set some nodes between the start/end-loop-node to "used" again.
 							 * But don't set all of them to "used", as we still want to do some network-thinning.
@@ -284,7 +299,7 @@ public class OsmMultimodalNetworkConverter {
 							 */
 							double increment = Math.sqrt(i - prevRealNodeIndex);
 							double nextNodeToKeep = prevRealNodeIndex + increment;
-							for(double j = nextNodeToKeep; j < i; j += increment) {
+							for (double j = nextNodeToKeep; j < i; j += increment) {
 								int index = (int) Math.floor(j);
 								Osm.Node intermediaryNode = way.getNodes().get(index);
 								nodesToIgnore.remove(intermediaryNode);
@@ -299,8 +314,8 @@ public class OsmMultimodalNetworkConverter {
 
 		// create the required nodes and add them to the network
 		log.info("Creating nodes...");
-		for(Osm.Node node : nodes.values()) {
-			if(!nodesToIgnore.contains(node)) {
+		for (Osm.Node node : nodes.values()) {
+			if (!nodesToIgnore.contains(node)) {
 				Node nn = this.network.getFactory().createNode(Id.create(node.getId(), Node.class), node.getCoord());
 				this.network.addNode(nn);
 			}
@@ -309,16 +324,16 @@ public class OsmMultimodalNetworkConverter {
 		// create the links
 		log.info("Creating links...");
 		this.id = 1;
-		for(Osm.Way way : ways.values()) {
-			Osm.Node fromNode = way.getNodes().get(0);
+		for (Osm.Way way : ways.values()) {
+			Osm.Node fromNode = way.getNodes().getFirst();
 			double length = 0.0;
 			Osm.Node lastToNode = fromNode;
-			if(!nodesToIgnore.contains(fromNode)) {
-				for(int i = 1, n = way.getNodes().size(); i < n; i++) {
+			if (!nodesToIgnore.contains(fromNode)) {
+				for (int i = 1, n = way.getNodes().size(); i < n; i++) {
 					Osm.Node toNode = way.getNodes().get(i);
-					if(toNode != lastToNode) {
+					if (toNode != lastToNode) {
 						length += CoordUtils.calcEuclideanDistance(lastToNode.getCoord(), toNode.getCoord());
-						if(!nodesToIgnore.contains(toNode)) {
+						if (!nodesToIgnore.contains(toNode)) {
 							createLink(way, fromNode, toNode, length);
 							fromNode = toNode;
 							length = 0.0;
@@ -346,19 +361,19 @@ public class OsmMultimodalNetworkConverter {
 
 		if (!this.unknownHighways.isEmpty()) {
 			log.info("The following highway-types had no defaults set and were thus NOT converted:");
-			for(String highwayType : this.unknownHighways) {
+			for (String highwayType : this.unknownHighways) {
 				log.info("- \"{}\"", highwayType);
 			}
 		}
 		if (!this.unknownRailways.isEmpty()) {
 			log.info("The following railway-types had no defaults set and were thus NOT converted:");
-			for(String railwayType : this.unknownRailways) {
+			for (String railwayType : this.unknownRailways) {
 				log.info("- \"{}\"", railwayType);
 			}
 		}
 		if (!this.unknownWays.isEmpty()) {
 			log.info("The way-types with the following tags had no defaults set and were thus NOT converted:");
-			for(String wayType : this.unknownWays) {
+			for (String wayType : this.unknownWays) {
 				log.info("- \"{}\"", wayType);
 			}
 		}
@@ -386,32 +401,30 @@ public class OsmMultimodalNetworkConverter {
 		String railwayValue = tags.get(Osm.Key.RAILWAY);
 
 		// ONEWAY
-		if("roundabout".equals(way.getTags().get(Osm.Key.JUNCTION))) {
+		if ("roundabout".equals(way.getTags().get(Osm.Key.JUNCTION))) {
 			// if "junction" is not set in tags, get() returns null and equals() evaluates to false
 			oneway = true;
 		}
 		String onewayTag = way.getTags().get(Osm.Key.ONEWAY);
-		if(onewayTag != null) {
-			if(Osm.Value.YES.equals(onewayTag)) {
-				oneway = true;
-			} else if("true".equals(onewayTag)) {
-				oneway = true;
-			} else if("1".equals(onewayTag)) {
-				oneway = true;
-			} else if("-1".equals(onewayTag)) {
-				onewayReverse = true;
-				oneway = false;
-			} else if("no".equals(onewayTag)) {
-				oneway = false; // may be used to overwrite defaults
+		if (onewayTag != null) {
+			switch (onewayTag) {
+				case Osm.Value.YES -> oneway = true;
+				case "true" -> oneway = true;
+				case "1" -> oneway = true;
+				case "-1" -> {
+					onewayReverse = true;
+					oneway = false;
+				}
+				case "no" -> oneway = false; // may be used to overwrite defaults
 			}
 		}
-		
+
 		// FREESPEED
 		double freeSpeedDefault = wayDefaultParams.getFreespeed();
 		double freeSpeedForward = calculateFreeSpeed(way, true, oneway || onewayReverse, freeSpeedDefault);
 		double freeSpeedBackward = calculateFreeSpeed(way, false, oneway || onewayReverse, freeSpeedDefault);
-		
-		if(config.getScaleMaxSpeed()) {
+
+		if (config.getScaleMaxSpeed()) {
 			double freeSpeedFactor = wayDefaultParams.getFreespeedFactor();
 			freeSpeedForward = freeSpeedForward * freeSpeedFactor;
 			freeSpeedBackward = freeSpeedBackward * freeSpeedFactor;
@@ -419,15 +432,15 @@ public class OsmMultimodalNetworkConverter {
 
 		// LANES
 		double laneCountDefault = wayDefaultParams.getLanes();
-		
+
 		double laneCountForward = calculateLaneCount(way, true, oneway || onewayReverse, laneCountDefault);
-		Result psvLanesForward = calcualteBlockingCount(way, true, oneway || onewayReverse, laneCountDefault);
-		
+		Result psvLanesForward = calculateBlockingCount(way, true, oneway || onewayReverse, laneCountDefault);
+
 		laneCountForward -= psvLanesForward.count;
-		
+
 		double laneCountBackward = calculateLaneCount(way, false, oneway || onewayReverse, laneCountDefault);
-		Result psvLanesBackward = calcualteBlockingCount(way, false, oneway || onewayReverse, laneCountDefault);
-		
+		Result psvLanesBackward = calculateBlockingCount(way, false, oneway || onewayReverse, laneCountDefault);
+
 		laneCountBackward -= psvLanesBackward.count;
 		// CAPACITY
 		//double capacity = laneCountDefault * laneCapacity;
@@ -435,7 +448,7 @@ public class OsmMultimodalNetworkConverter {
 		// MODES
 		// public transport: get relation which this way is part of, then get the relations route=* (-> the mode)
 		Set<String> ptModes = new HashSet<>();
-		for(Osm.Relation rel : way.getRelations().values()) {
+		for (Osm.Relation rel : way.getRelations().values()) {
 			String osmMode = rel.getTags().get(Osm.Key.ROUTE);
 			if (ptFilter.matches(rel) && osmMode != null) {
 				if (osmMode.equals(Osm.Value.TROLLEYBUS)) {
@@ -450,6 +463,7 @@ public class OsmMultimodalNetworkConverter {
 		// TURN RESTRICTIONS
 		List<OsmTurnRestriction> osmTurnRestrictions = this.parseTurnRestrictions(way, modes, ptModes);
 
+
 		// LENGTH
 		if (length == 0.0) {
 			log.warn("Attempting to create a link of length 0.0, which will mess up the routing. Fixing to 1.0!");
@@ -460,9 +474,9 @@ public class OsmMultimodalNetworkConverter {
 		// only create link, if both nodes were found, node could be null, since nodes outside a layer were dropped
 		Id<Node> fromId = Id.create(fromNode.getId(), Node.class);
 		Id<Node> toId = Id.create(toNode.getId(), Node.class);
-		if(network.getNodes().get(fromId) != null && network.getNodes().get(toId) != null) {
+		if (network.getNodes().get(fromId) != null && network.getNodes().get(toId) != null) {
 			// forward link (in OSM digitization direction)
-			if(!onewayReverse) {
+			if (!onewayReverse) {
 				Id<Link> linkId = Id.create(this.id, Link.class);
 				Link l = network.getFactory().createLink(linkId, network.getNodes().get(fromId), network.getNodes().get(toId));
 				l.setLength(length);
@@ -483,19 +497,19 @@ public class OsmMultimodalNetworkConverter {
 				network.addLink(l);
 				osmIds.put(l.getId(), way.getId());
 				geometryExporter.addLinkDefinition(linkId, new LinkDefinition(fromNode, toNode, way));
-				
+
 				// we might have dedicated lanes
 				// we need to create another link for that
-				
+
 				if (psvLanesForward.count > 0 && modes.contains("car")) {
-					
+
 					Id<Link> linkIdBus = Id.create(String.valueOf(this.id) + OSM_SPECIAL_LANE, Link.class);
 					Link lBus = network.getFactory().createLink(linkIdBus, network.getNodes().get(fromId), network.getNodes().get(toId));
 					lBus.setLength(length);
 					lBus.setFreespeed(freeSpeedForward);
 					lBus.setCapacity(psvLanesForward.count * laneCapacity);
 					lBus.setNumberOfLanes(psvLanesForward.count);
-					
+
 					// we adjust the modes allowed on other lanes
 					// while this is in practice not true, it makes it better
 					// for routing buses as otherwise they might end up on the 
@@ -504,18 +518,16 @@ public class OsmMultimodalNetworkConverter {
 					if (psvLanesForward.mode.equals(Osm.Key.BUS)) {
 						lBus.setAllowedModes(Set.of(Osm.Key.BUS, "pt"));
 						cmodes.remove(Osm.Key.BUS);
-					}
-					else if (psvLanesForward.mode.equals(Osm.Key.TAXI)) {
+					} else if (psvLanesForward.mode.equals(Osm.Key.TAXI)) {
 						lBus.setAllowedModes(Set.of("taxi"));
 						cmodes.remove(Osm.Key.TAXI);
-					}
-					else {
+					} else {
 						lBus.setAllowedModes(Set.of(Osm.Key.BUS, "pt", Osm.Key.TAXI));
 						cmodes.remove(Osm.Key.TAXI);
 						cmodes.remove(Osm.Key.BUS);
 					}
-					
-					
+
+
 					l.setAllowedModes(cmodes);
 					if (config.parseTurnRestrictions && !osmTurnRestrictions.isEmpty()) {
 						// filter turn restrictions to those for which this link could be the from link
@@ -531,12 +543,12 @@ public class OsmMultimodalNetworkConverter {
 					osmIds.put(lBus.getId(), way.getId());
 					geometryExporter.addLinkDefinition(linkIdBus, new LinkDefinition(fromNode, toNode, way));
 				}
-				
-				
+
+
 				this.id++;
 			}
 			// backward link
-			if(!oneway) {
+			if (!oneway) {
 				Id<Link> linkId = Id.create(this.id, Link.class);
 				Link l = network.getFactory().createLink(linkId, network.getNodes().get(toId), network.getNodes().get(fromId));
 				l.setLength(length);
@@ -557,26 +569,24 @@ public class OsmMultimodalNetworkConverter {
 				network.addLink(l);
 				osmIds.put(l.getId(), way.getId());
 				geometryExporter.addLinkDefinition(linkId, new LinkDefinition(toNode, fromNode, way));
-				
+
 				if (psvLanesBackward.count > 0 && modes.contains("car")) {
-					
+
 					Id<Link> linkIdBus = Id.create(String.valueOf(this.id) + "_spec", Link.class);
 					Link lBus = network.getFactory().createLink(linkIdBus, network.getNodes().get(toId), network.getNodes().get(fromId));
 					lBus.setLength(length);
 					lBus.setFreespeed(freeSpeedBackward);
 					lBus.setCapacity(psvLanesBackward.count * laneCapacity);
 					lBus.setNumberOfLanes(psvLanesBackward.count);
-					
+
 					Set<String> cmodes = new HashSet<>(modes);
 					if (psvLanesBackward.mode.equals(Osm.Key.BUS)) {
 						lBus.setAllowedModes(Set.of(Osm.Key.BUS, "pt"));
 						cmodes.remove(Osm.Key.BUS);
-					}
-					else if (psvLanesBackward.mode.equals(Osm.Key.TAXI)) {
+					} else if (psvLanesBackward.mode.equals(Osm.Key.TAXI)) {
 						lBus.setAllowedModes(Set.of(Osm.Key.TAXI));
 						cmodes.remove(Osm.Key.TAXI);
-					}
-					else {
+					} else {
 						lBus.setAllowedModes(Set.of(Osm.Key.BUS, "pt", Osm.Key.TAXI));
 						cmodes.remove(Osm.Key.TAXI);
 						cmodes.remove(Osm.Key.BUS);
@@ -600,87 +610,87 @@ public class OsmMultimodalNetworkConverter {
 			}
 		}
 	}
-	
+
 	private double calculateFreeSpeed(final Osm.Way way, boolean forward, boolean isOneway, double defaultFreeSpeed) {
 		double maxspeed = parseMaxspeedValueAsMs(way, Osm.Key.MAXSPEED).orElse(defaultFreeSpeed);
-		
+
 		// in case a specific maxspeed per direction is available this overrules the standard maxspeed
 		String direction = forward ? Osm.Key.FORWARD : Osm.Key.BACKWARD;
 		Optional<Double> directedMaxspeed = parseMaxspeedValueAsMs(way, Osm.Key.combinedKey(Osm.Key.MAXSPEED, direction));
-		if(directedMaxspeed.isPresent()) {
+		if (directedMaxspeed.isPresent()) {
 			maxspeed = directedMaxspeed.get();
 		}
-		
+
 		return maxspeed;
 	}
-	
+
 	/**
 	 * @return speed in meters per second
 	 */
 	private Optional<Double> parseMaxspeedValueAsMs(final Osm.Way way, String key) {
 		String value = way.getTags().get(key);
-		if(value == null)
+		if (value == null)
 			return Optional.empty();
-		
+
 		// take first value if more values are given
-		if(value.contains(";"))
+		if (value.contains(";"))
 			value = value.split(";")[0];
-		
+
 		double conversionDivisor = 3.6;
-		if(value.contains("mph")) {
+		if (value.contains("mph")) {
 			conversionDivisor = 2.237;
 			value = value.replaceAll("mph", "");
-		} else if(value.contains("knots")) {
+		} else if (value.contains("knots")) {
 			conversionDivisor = 1.944;
 			value = value.replaceAll("knots", "");
 		}
-		
-		if(Osm.Value.NONE.equals(value)) {
+
+		if (Osm.Value.NONE.equals(value)) {
 			return Optional.of(SPEED_LIMIT_NONE_KPH / conversionDivisor);
-		}
-		else if(Osm.Value.WALK.equals(value)) {
+		} else if (Osm.Value.WALK.equals(value)) {
 			return Optional.of(SPEED_LIMIT_WALK_KPH / conversionDivisor);
 		}
-		
+
 		try {
 			return Optional.of(Double.parseDouble(value) / conversionDivisor);
 		} catch (NumberFormatException e) {
-			if(!unknownMaxspeedTags.contains(value)) {
+			if (!unknownMaxspeedTags.contains(value)) {
 				unknownMaxspeedTags.add(value);
 				log.warn("Could not parse '{}': {} (way {})", key, e.getMessage(), way.getId());
 			}
 			return Optional.empty();
 		}
 	}
-	
+
 	private double calculateLaneCount(final Osm.Way way, boolean forward, boolean isOneway, double defaultLaneCount) {
 		double laneCount = parseLanesValue(way, Osm.Key.LANES).orElse(defaultLaneCount);
-		
-		if(!isOneway)
+
+		if (!isOneway)
 			laneCount /= 2;
-		
+
 		// in case a specific lane count per direction is available this overrules the standard lanes
 		String direction = forward ? Osm.Key.FORWARD : Osm.Key.BACKWARD;
 		Optional<Double> directedLaneCount = parseLanesValue(way, Osm.Key.combinedKey(Osm.Key.LANES, direction));
-		if(directedLaneCount.isPresent()) {
+		if (directedLaneCount.isPresent()) {
 			laneCount = directedLaneCount.get();
 		}
 
 		// sanitize
-		if(laneCount < 1)
+		if (laneCount < 1)
 			laneCount = 1;
-		
+
 		return laneCount;
 	}
-	
-	public record Result(double count, String mode) { }
-	
-	private Result calcualteBlockingCount(final Osm.Way way, boolean forward, boolean isOneway, double defaultLaneCount) {
+
+	public record Result(double count, String mode) {
+	}
+
+	private Result calculateBlockingCount(final Osm.Way way, boolean forward, boolean isOneway, double defaultLaneCount) {
 		// subtract lanes not accessible for cars
 		List<String> blockingMots = Arrays.asList(Osm.Key.BUS, Osm.Key.PSV, Osm.Key.TAXI);
 		double lanestoremove = 0;
 		String mode = "";
-		for(String blockingMot : blockingMots) {
+		for (String blockingMot : blockingMots) {
 			lanestoremove = parseReservedLanesValue(way, Osm.Key.combinedKey(Osm.Key.LANES, blockingMot)).orElse(0d);
 			if (lanestoremove != 0) {
 				mode = blockingMot;
@@ -692,13 +702,13 @@ public class OsmMultimodalNetworkConverter {
 				break;
 			}
 		}
-		
+
 		// in case a specific lane count per direction is available this overrules the standard lanes
 		String direction = forward ? Osm.Key.FORWARD : Osm.Key.BACKWARD;
 		Optional<Double> directedLaneCount = parseLanesValue(way, Osm.Key.combinedKey(Osm.Key.LANES, direction));
-		if(directedLaneCount.isPresent()) {
+		if (directedLaneCount.isPresent()) {
 			lanestoremove = 0;
-			for(String blockingMot : blockingMots) {
+			for (String blockingMot : blockingMots) {
 				lanestoremove = parseReservedLanesValue(way, Osm.Key.combinedKey(Osm.Key.LANES, blockingMot, direction)).orElse(0d);
 				if (lanestoremove != 0) {
 					mode = blockingMot;
@@ -710,71 +720,88 @@ public class OsmMultimodalNetworkConverter {
 					break;
 				}
 			}
-			
+
 		}
-		
-		if(!isOneway)
+
+		if (!isOneway)
 			lanestoremove /= 2;
-		
+
 		return new Result(lanestoremove, mode);
 	}
-	
+
 	private Optional<Double> parseLanesValue(final Osm.Way way, String key) {
 		String value = way.getTags().get(key);
-		if(value == null)
+		if (value == null)
 			return Optional.empty();
-		
+
+		// it is possible that the number of blocked lanes is not reported with a number
+		// but with specific designation per lane e.g., for two lanes: designated|yes
+		// meaning that left lane is for pt and right one for both
+
+		String[] parts = value.split("\\|");
+		int count = 0;
+		for (String p : parts) {
+			// if you want to ignore leading/trailing spaces:
+			if (p.trim().equals(Osm.Value.DESIGNATED) || p.trim().equals(Osm.Value.YES)) {
+				count++;
+			}
+		}
+		// if there are no lanes reserved, return 0
+		if (count > 0)
+			return Optional.of((double) count);
+
 		// take first value if more values are given
-		if(value.contains(";"))
+		if (value.contains(";"))
 			value = value.split(";")[0];
-		
+
 		try {
 			return Optional.of(Double.parseDouble(value));
 		} catch (NumberFormatException e) {
-			if(!unknownLanesTags.contains(value)) {
+			if (!unknownLanesTags.contains(value)) {
 				unknownLanesTags.add(value);
 				log.warn("Could not parse '{}': {} (way {})", key, e.getMessage(), way.getId());
 			}
 			return Optional.empty();
 		}
 	}
-	
+
 	private Optional<Double> parseReservedLanesValue(final Osm.Way way, String key) {
 		String value = way.getTags().get(key);
-		if(value == null)
+		if (value == null)
 			return Optional.empty();
-		
+
 		// it is possible that the number of blocked lanes is not reported with a number
 		// but with specific designation per lane e.g., for two lanes: designated|yes
 		// meaning that left lane is for pt and right one for both
-				
+
 		String[] parts = value.split("\\|");
-        int count = 0;
-        for (String p : parts) {
-            // if you want to ignore leading/trailing spaces:
-            if (p.trim().equals(Osm.Value.DESIGNATED)) {
-                count++;
-            }
-        }
-        if (count > 0)
-        	return Optional.of((double)count);
-        
-        // it can happen that the value is given as a numeric
-        // take first value if more values are given
- 		if(value.contains(";"))
- 			value = value.split(";")[0];
- 		
- 		try {
- 			return Optional.of(Double.parseDouble(value));
- 		} catch (NumberFormatException e) {
- 			if(!unknownLanesTags.contains(value)) {
- 				unknownLanesTags.add(value);
- 				log.warn("Could not parse '{}': {} (way {})", key, e.getMessage(), way.getId());
- 			}
- 			return Optional.empty();
- 		}
-		
-		
+		int count = 0;
+		for (String p : parts) {
+			// if you want to ignore leading/trailing spaces:
+			if (p.trim().equals(Osm.Value.DESIGNATED) || p.trim().equals(Osm.Value.YES)) {
+				count++;
+			}
+		}
+		// if there are no lanes reserved, return 0
+		if (count > 0)
+			return Optional.of((double) count);
+
+		// it can happen that the value is given as a numeric
+		// take first value if more values are given
+		if (value.contains(";"))
+			value = value.split(";")[0];
+
+		try {
+			return Optional.of(Double.parseDouble(value));
+		} catch (NumberFormatException e) {
+			if (!unknownLanesTags.contains(value)) {
+				unknownLanesTags.add(value);
+				log.warn("Could not parse '{}': {} (way {})", key, e.getMessage(), way.getId());
+			}
+			return Optional.empty();
+		}
+
+
 	}
 
 	private void initPT() {
@@ -805,11 +832,11 @@ public class OsmMultimodalNetworkConverter {
 	}
 
 	protected boolean wayHasPublicTransit(Osm.Way way) {
-		if(ptFilter.matches(way)) {
+		if (ptFilter.matches(way)) {
 			return true;
 		}
-		for(Osm.Relation relation : way.getRelations().values()) {
-			if(ptFilter.matches(relation)) {
+		for (Osm.Relation relation : way.getRelations().values()) {
+			if (ptFilter.matches(relation)) {
 				return true;
 			}
 		}
@@ -822,19 +849,19 @@ public class OsmMultimodalNetworkConverter {
 		String railwayValue = tags.get(Osm.Key.RAILWAY);
 
 		OsmConverterConfigGroup.OsmWayParams wayDefaults = null;
-		if(highwayValue != null) {
+		if (highwayValue != null) {
 			Map<String, OsmConverterConfigGroup.OsmWayParams> highwayParams = this.wayParams.get(Osm.Key.HIGHWAY);
-			if(highwayParams != null) {
+			if (highwayParams != null) {
 				wayDefaults = highwayParams.get(highwayValue);
-				if(wayDefaults == null) {
+				if (wayDefaults == null) {
 					unknownHighways.add(highwayValue);
 				}
 			}
-		} else if(railwayValue != null) {
+		} else if (railwayValue != null) {
 			Map<String, OsmConverterConfigGroup.OsmWayParams> railwayParams = this.wayParams.get(Osm.Key.RAILWAY);
-			if(railwayParams != null) {
+			if (railwayParams != null) {
 				wayDefaults = railwayParams.get(railwayValue);
-				if(wayDefaults == null) {
+				if (wayDefaults == null) {
 					unknownRailways.add(railwayValue);
 				}
 			}
@@ -842,8 +869,8 @@ public class OsmMultimodalNetworkConverter {
 			unknownWays.add(way.getTags().values().toString());
 		}
 
-		if(wayDefaults == null) {
-			if(wayHasPublicTransit(way) && config.keepHighwaysWithPT()) {
+		if (wayDefaults == null) {
+			if (wayHasPublicTransit(way) && config.keepHighwaysWithPT()) {
 				wayDefaults = ptDefaultParams;
 			}
 		}
@@ -869,15 +896,15 @@ public class OsmMultimodalNetworkConverter {
 	 * clean the road network and attributes are not copied while filtering
 	 */
 	protected void addAttributes() {
-		for(Link link : this.network.getLinks().values()) {
+		for (Link link : this.network.getLinks().values()) {
 			Osm.Way way = osmData.getWays().get(osmIds.get(link.getId()));
 
 			// way id
 			link.getAttributes().putAttribute(OsmConverterConfigGroup.LINK_ATTRIBUTE_WAY_ID, Long.parseLong(way.getId().toString()));
 
 			// default tags
-			for(Map.Entry<String, String> t : way.getTags().entrySet()) {
-				if(Osm.Key.DEFAULT_KEYS.contains(t.getKey())) {
+			for (Map.Entry<String, String> t : way.getTags().entrySet()) {
+				if (Osm.Key.DEFAULT_KEYS.contains(t.getKey())) {
 					String key = OsmConverterConfigGroup.LINK_ATTRIBUTE_WAY_PREFIX + t.getKey();
 					String val = t.getValue();
 					link.getAttributes().putAttribute(key.replace("&", "AND"), val.replace("&", "AND"));
@@ -885,10 +912,10 @@ public class OsmMultimodalNetworkConverter {
 			}
 
 			// relation info
-			for(Osm.Relation rel : way.getRelations().values()) {
+			for (Osm.Relation rel : way.getRelations().values()) {
 				// route
 				String route = rel.getTags().get(Osm.Key.ROUTE);
-				if(route != null) {
+				if (route != null) {
 					String osmRouteKey = OsmConverterConfigGroup.LINK_ATTRIBUTE_RELATION_ROUTE;
 					Set<String> attr = new HashSet<>(CollectionUtils.stringToSet((String) link.getAttributes().getAttribute(osmRouteKey)));
 					attr.add(route);
@@ -897,7 +924,7 @@ public class OsmMultimodalNetworkConverter {
 
 				// route master
 				String route_master = rel.getTags().get(Osm.Key.ROUTE_MASTER);
-				if(route_master != null) {
+				if (route_master != null) {
 					String osmRouteMasterKey = OsmConverterConfigGroup.LINK_ATTRIBUTE_RELATION_ROUTE_MASTER;
 					Set<String> attr = new HashSet<>(CollectionUtils.stringToSet((String) link.getAttributes().getAttribute(osmRouteMasterKey)));
 					attr.add(route_master);
@@ -908,20 +935,20 @@ public class OsmMultimodalNetworkConverter {
 	}
 
 	/**
-	 * Makes sure that consistent routable sub networks are created.
+	 * Makes sure that consistent routable subnetworks are created.
 	 */
 	protected void cleanNetwork() {
-	    Set<String> subnetworkModes = new HashSet<>();
-	    List<Network> subnetworks = new LinkedList<>();
-	    
-	    for (ConfigGroup params : config.getParameterSets(OsmConverterConfigGroup.RoutableSubnetworkParams.SET_NAME)) {
+		Set<String> subnetworkModes = new HashSet<>();
+		List<Network> subnetworks = new LinkedList<>();
+
+		for (ConfigGroup params : config.getParameterSets(OsmConverterConfigGroup.RoutableSubnetworkParams.SET_NAME)) {
 			OsmConverterConfigGroup.RoutableSubnetworkParams subnetworkParams = (OsmConverterConfigGroup.RoutableSubnetworkParams) params;
 			final String subnetworkMode = subnetworkParams.subnetworkMode;
 			final Set<String> allowedTransportModes = subnetworkParams.allowedTransportModes;
 			subnetworkModes.add(subnetworkMode);
-	        log.info(String.format("Creating clean subnetwork for '%s' considering links of: %s", subnetworkMode, allowedTransportModes.toString()));
-	        
-	        Network subnetwork = NetworkTools.createFilteredNetworkByLinkMode(network, allowedTransportModes);
+			log.info("Creating clean subnetwork for '{}' considering links of: {}", subnetworkMode, allowedTransportModes.toString());
+
+			Network subnetwork = NetworkTools.createFilteredNetworkByLinkMode(network, allowedTransportModes);
 
 			joinDisallowedNextLinks(subnetwork, allowedTransportModes); // if there are > 1 allowedTransportModes
 
@@ -951,31 +978,31 @@ public class OsmMultimodalNetworkConverter {
 			DisallowedNextLinksUtils.clean(subnetwork);
 
 			subnetworks.add(subnetwork);
-	    }
-	    
-		Set<String> remainingModes = new HashSet<>();
-	    for (Link link : network.getLinks().values()) {
-	    	remainingModes.addAll(link.getAllowedModes());
 		}
-	    remainingModes.removeAll(subnetworkModes);
-	    
-	    log.info(String.format("Creating remaining network with modes: %s", remainingModes.toString()));
-	    Network remainingNetwork = NetworkTools.createFilteredNetworkByLinkMode(network, remainingModes);
-	    
-	    for (Link link : remainingNetwork.getLinks().values()) {
-	    	Set<String> newAllowedModes = new HashSet<>(remainingModes);
-	    	newAllowedModes.retainAll(link.getAllowedModes());
-	    	link.setAllowedModes(newAllowedModes);
-	    }
-	    
-	    subnetworks.add(remainingNetwork);
-	    
-	    log.info("Creating combined network");
-	    Network combinedNetwork = NetworkUtils.createNetwork();
-	    subnetworks.forEach(n -> NetworkTools.integrateNetwork(combinedNetwork, n, true));
+
+		Set<String> remainingModes = new HashSet<>();
+		for (Link link : network.getLinks().values()) {
+			remainingModes.addAll(link.getAllowedModes());
+		}
+		remainingModes.removeAll(subnetworkModes);
+
+		log.info("Creating remaining network with modes: {}", remainingModes.toString());
+		Network remainingNetwork = NetworkTools.createFilteredNetworkByLinkMode(network, remainingModes);
+
+		for (Link link : remainingNetwork.getLinks().values()) {
+			Set<String> newAllowedModes = new HashSet<>(remainingModes);
+			newAllowedModes.retainAll(link.getAllowedModes());
+			link.setAllowedModes(newAllowedModes);
+		}
+
+		subnetworks.add(remainingNetwork);
+
+		log.info("Creating combined network");
+		Network combinedNetwork = NetworkUtils.createNetwork();
+		subnetworks.forEach(n -> NetworkTools.integrateNetwork(combinedNetwork, n, true));
 		DisallowedNextLinksUtils.clean(combinedNetwork);
 
-	    this.network = combinedNetwork;
+		this.network = combinedNetwork;
 	}
 
 	/**
@@ -1080,6 +1107,10 @@ public class OsmMultimodalNetworkConverter {
 			osmTurnRestrictions.add(new OsmTurnRestriction(restrictionModes, nextWayIds, viaNodeId, restrictionType));
 		}
 
+		if (osmTurnRestrictions.isEmpty()) {
+			return Collections.emptyList();
+		}
+
 		return osmTurnRestrictions;
 	}
 
@@ -1090,61 +1121,61 @@ public class OsmMultimodalNetworkConverter {
 		}
 
 		Map<Id<Link>, DisallowedNextLinks> map = network.getLinks().entrySet().parallelStream().map(e -> {
-			Link link = e.getValue();
+					Link link = e.getValue();
 
-			// Note, that these turn restriction attributes are attached to both forward and
-			// reverse MATSim links, but only one is valid.
-			@SuppressWarnings("unchecked")
-			List<OsmTurnRestriction> osmTurnRestrictions = (List<OsmTurnRestriction>) link.getAttributes()
-					.getAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME);
-			if (osmTurnRestrictions == null) {
-				return null;
-			}
-
-			// create DisallowedNextLinks
-			DisallowedNextLinks dnl = null;
-			for (OsmTurnRestriction tr : osmTurnRestrictions) {
-
-				// find next link ids from next way ids
-				List<Id<Link>> nextLinkIds = findLinkIds(this.wayLinkMap, this.network, link.getToNode(),
-						tr.nextWayIds);
-				if (nextLinkIds.isEmpty()) {
-					continue;
-				}
-
-				// find link id lists to disallow
-				List<List<Id<Link>>> disallowedNextLinkIdLists = new ArrayList<>();
-				if (tr.restrictionType.equals(OsmTurnRestriction.RestrictionType.PROHIBITIVE)) {
-					disallowedNextLinkIdLists.add(nextLinkIds);
-				} else if (tr.restrictionType.equals(OsmTurnRestriction.RestrictionType.MANDATORY)) {
-					// we need to exclude all other links originating from fromWay's toNode
-					link.getToNode().getOutLinks().values().stream()
-							.map(Link::getId)
-							.filter(lId -> !lId.equals(nextLinkIds.get(0)))
-							.forEach(lId -> disallowedNextLinkIdLists.add(List.of(lId)));
-				}
-
-				// attach DisallowedNextLinks objects
-				if (dnl == null && !disallowedNextLinkIdLists.isEmpty()) {
-					dnl = new DisallowedNextLinks();
-					log.debug("Link {}: modes={} disallowedNextLinkIdLists={}", e.getKey(),
-							Arrays.toString(tr.modes.toArray()), Arrays.toString(disallowedNextLinkIdLists.toArray()));
-				}
-				for (List<Id<Link>> disallowedNextLinkIds : disallowedNextLinkIdLists) {
-					for (String mode : tr.modes) {
-						dnl.addDisallowedLinkSequence(mode, disallowedNextLinkIds);
+					// Note, that these turn restriction attributes are attached to both forward and
+					// reverse MATSim links, but only one is valid.
+					@SuppressWarnings("unchecked")
+					List<OsmTurnRestriction> osmTurnRestrictions = (List<OsmTurnRestriction>) link.getAttributes()
+							.getAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME);
+					if (osmTurnRestrictions == null) {
+						return null;
 					}
-				}
-			}
 
-			// remove attribute
-			link.getAttributes().removeAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME);
+					// create DisallowedNextLinks
+					DisallowedNextLinks dnl = null;
+					for (OsmTurnRestriction tr : osmTurnRestrictions) {
 
-			if (dnl != null) {
-				return Map.entry(e.getKey(), dnl);
-			}
-			return null;
-		})
+						// find next link ids from next way ids
+						List<Id<Link>> nextLinkIds = findLinkIds(this.wayLinkMap, this.network, link.getToNode(),
+								tr.nextWayIds);
+						if (nextLinkIds.isEmpty()) {
+							continue;
+						}
+
+						// find link id lists to disallow
+						List<List<Id<Link>>> disallowedNextLinkIdLists = new ArrayList<>();
+						if (tr.restrictionType.equals(OsmTurnRestriction.RestrictionType.PROHIBITIVE)) {
+							disallowedNextLinkIdLists.add(nextLinkIds);
+						} else if (tr.restrictionType.equals(OsmTurnRestriction.RestrictionType.MANDATORY)) {
+							// we need to exclude all other links originating from fromWay's toNode
+							link.getToNode().getOutLinks().values().stream()
+									.map(Link::getId)
+									.filter(lId -> !lId.equals(nextLinkIds.getFirst()))
+									.forEach(lId -> disallowedNextLinkIdLists.add(List.of(lId)));
+						}
+
+						// attach DisallowedNextLinks objects
+						if (dnl == null && !disallowedNextLinkIdLists.isEmpty()) {
+							dnl = new DisallowedNextLinks();
+							log.debug("Link {}: modes={} disallowedNextLinkIdLists={}", e.getKey(),
+									Arrays.toString(tr.modes.toArray()), Arrays.toString(disallowedNextLinkIdLists.toArray()));
+						}
+						for (List<Id<Link>> disallowedNextLinkIds : disallowedNextLinkIdLists) {
+							for (String mode : tr.modes) {
+								dnl.addDisallowedLinkSequence(mode, disallowedNextLinkIds);
+							}
+						}
+					}
+
+					// remove attribute
+					link.getAttributes().removeAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME);
+
+					if (dnl != null) {
+						return Map.entry(e.getKey(), dnl);
+					}
+					return null;
+				})
 				.filter(Objects::nonNull)
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 
@@ -1154,7 +1185,7 @@ public class OsmMultimodalNetworkConverter {
 	// Statics
 
 	private static void copyToTmpModeAndRemoveDnlOfSubnetworkMode(Network subnetwork, String subnetworkMode,
-			Set<String> allowedTransportModes, String tmpMode) {
+																  Set<String> allowedTransportModes, String tmpMode) {
 		Verify.verify(subnetwork.getLinks().values().stream()
 				.noneMatch(link -> link.getAllowedModes().contains(tmpMode)));
 		subnetwork.getLinks().values().forEach(link -> NetworkUtils.addAllowedMode(link, tmpMode));
@@ -1180,7 +1211,7 @@ public class OsmMultimodalNetworkConverter {
 	 * we remove turn restrictions that would have previously forbidden to transfer
 	 * between links that have different allowed modes (only considering
 	 * allowedTransportModes).
-	 * 
+	 *
 	 * @param subnetwork
 	 * @param allowedTransportModes
 	 */
@@ -1220,9 +1251,9 @@ public class OsmMultimodalNetworkConverter {
 					List<List<Id<Link>>> linkSequences = new ArrayList<>(
 							dnl.getDisallowedLinkSequences(allowedMode));
 					boolean removedLinkSequence = false;
-					for (ListIterator<List<Id<Link>>> it = linkSequences.listIterator(); it.hasNext();) {
+					for (ListIterator<List<Id<Link>>> it = linkSequences.listIterator(); it.hasNext(); ) {
 						List<Id<Link>> linkSequence = it.next();
-						if (linkSequence.size() == 1 && linkSequence.get(0).equals(link2.getId())) {
+						if (linkSequence.size() == 1 && linkSequence.getFirst().equals(link2.getId())) {
 							it.remove();
 							removedLinkSequence = true;
 							log.warn("Removed link sequence {} from {} for {}", linkSequence.toString(),
@@ -1244,7 +1275,7 @@ public class OsmMultimodalNetworkConverter {
 					List<List<Id<Link>>> linkSequences = new ArrayList<>(
 							dnl.getDisallowedLinkSequences(allowedMode));
 					boolean removedLinkSequence = false;
-					for (ListIterator<List<Id<Link>>> it = linkSequences.listIterator(); it.hasNext();) {
+					for (ListIterator<List<Id<Link>>> it = linkSequences.listIterator(); it.hasNext(); ) {
 						List<Id<Link>> linkSequence = it.next();
 						for (List<Id<Link>> linkConnection : linkConnectionsToRemove) { // not very efficient
 							if (Collections.indexOfSubList(linkSequence, linkConnection) >= 0) {
@@ -1268,7 +1299,7 @@ public class OsmMultimodalNetworkConverter {
 	/**
 	 * Finds list of link ids starting from {@code lastNode} from list of OSM way
 	 * ids.
-	 * 
+	 *
 	 * @param wayLinkMap
 	 * @param network
 	 * @param lastNode
@@ -1276,7 +1307,7 @@ public class OsmMultimodalNetworkConverter {
 	 * @return
 	 */
 	protected static List<Id<Link>> findLinkIds(Map<Id<Osm.Way>, List<Id<Link>>> wayLinkMap, Network network,
-			Node lastNode, List<Id<Osm.Way>> wayIds) {
+												Node lastNode, List<Id<Osm.Way>> wayIds) {
 
 		Map<Id<Link>, ? extends Link> links = network.getLinks();
 		List<Entry<Id<Osm.Way>, Id<Link>>> linkIds = new ArrayList<>();
@@ -1310,8 +1341,8 @@ public class OsmMultimodalNetworkConverter {
 				}
 			}
 
-			
-			log.debug("  Way {} might belong to valid turn restriction with links {}", wayId,Arrays.toString(linkIdCandidates.toArray()));
+
+			log.debug("  Way {} might belong to valid turn restriction with links {}", wayId, Arrays.toString(linkIdCandidates.toArray()));
 
 			// find link sequence from way
 			Link nextLink;
@@ -1319,7 +1350,7 @@ public class OsmMultimodalNetworkConverter {
 				nextLink = null;
 
 				// find next link id
-				for (Iterator<Id<Link>> linkIdIt = linkIdCandidates.listIterator(); linkIdIt.hasNext();) {
+				for (Iterator<Id<Link>> linkIdIt = linkIdCandidates.listIterator(); linkIdIt.hasNext(); ) {
 					Id<Link> linkIdCandidate = linkIdIt.next();
 					Link linkCandidate = links.get(linkIdCandidate);
 
@@ -1338,7 +1369,7 @@ public class OsmMultimodalNetworkConverter {
 
 				// remove reverse link of found link, so it is not found in next iteration
 				if (nextLink != null) {
-					for (Iterator<Id<Link>> linkIdIt = linkIdCandidates.listIterator(); linkIdIt.hasNext();) {
+					for (Iterator<Id<Link>> linkIdIt = linkIdCandidates.listIterator(); linkIdIt.hasNext(); ) {
 						Id<Link> linkIdCandidate = linkIdIt.next();
 						Link linkCandidate = links.get(linkIdCandidate);
 
@@ -1352,7 +1383,7 @@ public class OsmMultimodalNetworkConverter {
 
 				// repeat until no new next link is found
 				log.debug("  Way {}: Next link {} -> remaining linkIdCandidates={}", wayId,
-								nextLink == null ? "(null)" : nextLink.getId(),
+						nextLink == null ? "(null)" : nextLink.getId(),
 						Arrays.toString(linkIdCandidates.toArray()));
 			} while (nextLink != null && !linkIdCandidates.isEmpty());
 

@@ -36,8 +36,8 @@ public class OsmDataImpl implements OsmData {
 	protected final Map<Id<Osm.Way>, Osm.Way> ways = new HashMap<>();
 	protected final Map<Id<Osm.Relation>, Osm.Relation> relations = new HashMap<>();
 
-	protected Map<Long, OsmFileReader.ParsedRelation> parsedRelations = null;
-	protected Map<Long, OsmFileReader.ParsedWay> parsedWays = null;
+	protected Map<Long, OsmXmlFileReader.ParsedRelation> parsedRelations = null;
+	protected Map<Long, OsmXmlFileReader.ParsedWay> parsedWays = null;
 
 	// Filters
 	protected AllowedTagsFilter filter = new AllowedTagsFilter();
@@ -60,7 +60,7 @@ public class OsmDataImpl implements OsmData {
 		log.info("Create ways...");
 		if(parsedWays == null) throw new RuntimeException("No ways available in osm file");
 		Counter pwCounter = new Counter(" # ");
-		for(OsmFileReader.ParsedWay pw : parsedWays.values()) {
+		for(OsmXmlFileReader.ParsedWay pw : parsedWays.values()) {
 			pwCounter.incCounter();
 			boolean nodesAvailable = true;
 			List<Osm.Node> nodeList = new ArrayList<>();
@@ -95,7 +95,7 @@ public class OsmDataImpl implements OsmData {
 			parsedRelations = new HashMap<>();
 		}
 		Counter prCounter = new Counter(" # ");
-		for(OsmFileReader.ParsedRelation pr : parsedRelations.values()) {
+		for(OsmXmlFileReader.ParsedRelation pr : parsedRelations.values()) {
 			prCounter.incCounter();
 			Osm.Relation newRel = new OsmElement.Relation(pr.id, pr.tags);
 			if(relations.put(newRel.getId(), newRel) != null) {
@@ -104,29 +104,29 @@ public class OsmDataImpl implements OsmData {
 		}
 
 		// add relation members
-		for(OsmFileReader.ParsedRelation pr : parsedRelations.values()) {
+		for(OsmXmlFileReader.ParsedRelation pr : parsedRelations.values()) {
 
 			Osm.Relation currentRel = relations.get(Id.create(pr.id, Osm.Relation.class));
 
 			Map<Osm.Element, List<String>> memberRoles = new HashMap<>();
 			List<Osm.Element> memberList = new ArrayList<>();
-			for(OsmFileReader.ParsedRelationMember pMember : pr.members) {
+			for(OsmXmlFileReader.ParsedRelationMember pMember : pr.members) {
 				Osm.Element member = null;
-				switch(pMember.type) {
+				switch(pMember.type()) {
 					case NODE:
-						member = nodes.get(Id.create(pMember.refId, Osm.Node.class));
+						member = nodes.get(Id.create(pMember.refId(), Osm.Node.class));
 						break;
 					case WAY:
-						member = ways.get(Id.create(pMember.refId, Osm.Way.class));
+						member = ways.get(Id.create(pMember.refId(), Osm.Way.class));
 						break;
 					case RELATION:
-						member = relations.get(Id.create(pMember.refId, Osm.Relation.class));
+						member = relations.get(Id.create(pMember.refId(), Osm.Relation.class));
 						break;
 				}
 				// relation member might be outside of map area
 				if(member != null) {
 					memberList.add(member); // this will add members with multiple roles multiple times
-					memberRoles.computeIfAbsent(member, m -> new ArrayList<>()).add(pMember.role);
+					memberRoles.computeIfAbsent(member, m -> new ArrayList<>()).add(pMember.role());
 				}
 
 				// add relations to nodes/ways/relations
@@ -220,7 +220,7 @@ public class OsmDataImpl implements OsmData {
 	}
 
 	@Override
-	public void handleParsedNode(OsmFileReader.ParsedNode node) {
+	public void handleParsedNode(OsmXmlFileReader.ParsedNode node) {
 		if(filter.matches(node)) {
 			Osm.Node newNode = new OsmElement.Node(node.id, node.coord, node.tags);
 			if(nodes.put(newNode.getId(), newNode) != null) {
@@ -230,7 +230,7 @@ public class OsmDataImpl implements OsmData {
 	}
 
 	@Override
-	public void handleParsedWay(OsmFileReader.ParsedWay way) {
+	public void handleParsedWay(OsmXmlFileReader.ParsedWay way) {
 		if(filter.matches(way)) {
 			if(parsedWays == null) parsedWays = new HashMap<>();
 			parsedWays.put(way.id, way);
@@ -238,7 +238,7 @@ public class OsmDataImpl implements OsmData {
 	}
 
 	@Override
-	public void handleParsedRelation(OsmFileReader.ParsedRelation relation) {
+	public void handleParsedRelation(OsmXmlFileReader.ParsedRelation relation) {
 		if(filter.matches(relation)) {
 			if(parsedRelations == null) parsedRelations = new HashMap<>();
 			parsedRelations.put(relation.id, relation);

@@ -81,7 +81,17 @@ public final class Osm2MultimodalNetwork {
 		filter.add(Osm.ElementType.WAY, Osm.Key.RAILWAY, null);
 
 		OsmData osmData = new OsmDataImpl(filter);
-		new OsmFileReader(osmData).readFile(config.getOsmFile());
+		String osmFile = config.getOsmFile();
+		switch (config.getOsmFileType()) {
+			case "osm":
+				new OsmXmlFileReader(osmData).readFile(osmFile);
+				break;
+			case "osm.pbf":
+				new OsmPbfFileReader(osmData).readFile(osmFile);
+				break;
+			default:
+				throw new IllegalArgumentException("Unknown osm file type: " + config.getOsmFileType());
+		}
 
 		OsmMultimodalNetworkConverter converter = new OsmMultimodalNetworkConverter(osmData);
 		converter.convert(config);
