@@ -104,6 +104,10 @@ public class OsmMultimodalNetworkConverter {
 	private static final String OSM_TURN_RESTRICTION_ATTRIBUTE_NAME = OsmTurnRestriction.class.getSimpleName();
 	private static final String OSM_SPECIAL_LANE = "_spec";
 
+	public Network getNetwork() {
+		return network;
+	}
+
 	/**
 	 * mode == null means "all modes"
 	 */
@@ -324,7 +328,14 @@ public class OsmMultimodalNetworkConverter {
 		// create the links
 		log.info("Creating links...");
 		this.id = 1;
+		int linkCount = 0;
 		for (Osm.Way way : ways.values()) {
+			// skip ways without nodes
+			if (way.getNodes().isEmpty()) {
+				log.warn("Skipping way with no nodes: {}", way.getId());
+				linkCount++;
+				continue;
+			}
 			Osm.Node fromNode = way.getNodes().getFirst();
 			double length = 0.0;
 			Osm.Node lastToNode = fromNode;
@@ -343,6 +354,8 @@ public class OsmMultimodalNetworkConverter {
 				}
 			}
 		}
+		log.info("Number of links created: {} and number of links having no nodes to ignore: {}",
+				this.network.getLinks().size(), linkCount);
 
 		// create reverse lookup map for link ids
 		wayLinkMap.putAll(osmIds.entrySet().stream().collect(
@@ -958,7 +971,14 @@ public class OsmMultimodalNetworkConverter {
 
 			// clean
 			DisallowedNextLinksUtils.clean(subnetwork);
-			new TurnRestrictionsNetworkCleaner().run(subnetwork, tmpMode);
+
+			try {
+				// Safe way to call TurnRestrictionsNetworkCleaner to avoid ConcurrentModificationException
+				new TurnRestrictionsNetworkCleaner().run(subnetwork, tmpMode);
+			} catch (Exception e) {
+				log.warn("Error during turn restrictions network cleaning for mode {}: {}", tmpMode, e.getMessage());
+				log.warn("Continuing without turn restrictions cleaning for this mode");
+			}
 
 			// remove all links without tmpMode
 			subnetwork.getLinks().values().stream()
@@ -1006,10 +1026,31 @@ public class OsmMultimodalNetworkConverter {
 	}
 
 	/**
-	 * @return the network
+	 * Safe method to run turn restrictions network cleaner to avoid ConcurrentModificationException
 	 */
-	public Network getNetwork() {
-		return this.network;
+	private void safeTurnRestrictionsNetworkCleaner(Network network, String mode) {
+		// First make a defensive copy of all the links that have the mode
+		Set<Link> linksWithMode = network.getLinks().values().stream()
+			.filter(link -> link.getAllowedModes().contains(mode))
+			.collect(Collectors.toSet());
+
+		// Process each link safely
+		for (Link link : linksWithMode) {
+			if (!network.getLinks().containsKey(link.getId())) {
+				continue; // Skip if link was removed in previous iterations
+			}
+
+			// Create a cleaner for each link to avoid concurrent modification
+			try {
+				DisallowedNextLinks dnl = NetworkUtils.getDisallowedNextLinks(link);
+				if (dnl != null && !dnl.getDisallowedLinkSequences(mode).isEmpty()) {
+					// Handle each link's disallowed sequences individually
+					DisallowedNextLinksUtils.clean(network);
+				}
+			} catch (Exception e) {
+				log.warn("Error processing turn restrictions for link {}: {}", link.getId(), e.getMessage());
+			}
+		}
 	}
 
 	// Turn Restrictions

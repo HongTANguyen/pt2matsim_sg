@@ -64,7 +64,7 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
     @CommandLine.Option(names = "--temp-network-xml", description = "Temporary network XML file path", defaultValue = "sg-2023_network1_epsg3414_temp.xml.gz")
     private static String TEMP_NETWORK_XML;
     
-    @CommandLine.Option(names = "--input-osm-file", description = "Input OSM file path", defaultValue ="input/singapore_all_240101.osm")
+    @CommandLine.Option(names = "--input-osm-file", description = "Input OSM file path", defaultValue ="input/singapore_all_250101_fixed.osm")
     private String INPUT_OSM_FILE;
     
     @CommandLine.Option(names = "--final-normal-network-xml", description = "Final normal network XML file path", defaultValue = "sg-2023_network_epsg3414.xml.gz")
