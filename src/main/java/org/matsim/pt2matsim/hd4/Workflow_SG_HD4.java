@@ -129,12 +129,12 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
 
         // Ensure directory exists for geojson file
         ensureDirectoryExists(osmConfig.getOutputNetworkFile().replace(".xml.gz", ".geojson"));
-        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, osmConfig.getOutputNetworkFile().replace(".xml.gz", ".geojson"));
+        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, osmConfig.getOutputNetworkFile().replace(".xml.gz", ".geojson"), true);
 
         Network connectedNetwork = NetworkTools.readNetwork(osmConfig.getOutputNetworkFile());
         NetworkUtils.cleanNetwork(connectedNetwork, Set.of("bike", "walk"));
         NetworkUtils.writeNetwork(connectedNetwork, osmConfig.getOutputNetworkFile().replace("unconnected", "connected"));
-        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, connectedNetwork, osmConfig.getOutputNetworkFile().replace("unconnected", "connected").replace(".xml.gz", ".geojson"));
+        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, connectedNetwork, osmConfig.getOutputNetworkFile().replace("unconnected", "connected").replace(".xml.gz", ".geojson"), true);
 
         cutOffNetwork(network, BOUNDARY_SHP_FILE);
 
@@ -147,7 +147,7 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
 
         // Ensure directory exists for final geojson file
         ensureDirectoryExists(FINAL_NORMAL_NETWORK_GEOJSON);
-        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, FINAL_NORMAL_NETWORK_GEOJSON);
+        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, FINAL_NORMAL_NETWORK_GEOJSON, false);
 
         //Clean network to make it connected
         log.info("==============================================================");
@@ -155,7 +155,7 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
         log.info("==============================================================");
         NetworkUtils.cleanNetwork(network, Set.of("bike", "walk"));
         NetworkUtils.writeNetwork(network, FINAL_NORMAL_NETWORK_XML.replace("unconnected", "connected"));
-        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, FINAL_NORMAL_NETWORK_GEOJSON.replace("unconnected", "connected"));
+        Network2Geojson.run(OUTPUT_COORDINATE_SYSTEM, network, FINAL_NORMAL_NETWORK_GEOJSON.replace("unconnected", "connected"), false);
         log.info("==> Network cleaned successfully!");
         log.info("===========================================================");
 

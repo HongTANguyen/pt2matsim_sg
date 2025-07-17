@@ -124,7 +124,10 @@ public class Schedule2Geojson {
 		combineFeatures();
 	}
 
-	public void writeSchedule(String outputFile) {
+    public static void run(String outputCoordinateSystem, TransitSchedule schedule, String s, Object o, boolean b) {
+    }
+
+    public void writeSchedule(String outputFile) {
 		GeojsonTools.writeFeatureCollectionToFile(this.scheduleFeatureCollection, outputFile);
 	}
 

@@ -115,7 +115,7 @@ public final class CheckMappedSchedulePlausibility {
 		histogram.createPng(outputFolder + "stopfacilities_histogram.png");
 
 		// write network
-		Network2Geojson.run(coordinateSystem, network, outputFolder + "network.geojson");
+		Network2Geojson.run(coordinateSystem, network, outputFolder + "network.geojson", true);
 
 		check.printStatisticsLog();
 	}

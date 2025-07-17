@@ -50,49 +50,56 @@ public class Network2Geojson {
 	 * 			   [1] input network file
 	 *             [2] output network file (contains only links if nodes file is given)
 	 *             [3] output nodes file (optional)
+	 *             [4] add other attributes to links (optional, default is false)
 	 */
 	public static void main(String[] args) {
-		if(args.length == 4) {
-			run(args[0], args[1], args[2], args[3]);
+		if(args.length == 5) {
+			run(args[0], args[1], args[2], args[3], Boolean.parseBoolean(args[4]));
+		} else if(args.length == 4) {
+			run(args[0], args[1], args[2], Boolean.parseBoolean(args[3]));
 		} else if(args.length == 3) {
-			run(args[0], args[1], args[2]);
+			run(args[0], args[1], args[2], false);
+		} else if(args.length == 0) {
+			throw new RuntimeException("No arguments given. Please provide at least the network coordinate system.");
 		} else {
 			throw new RuntimeException("Incorrect number of arguments " + args.length);
 		}
 	}
 
-	public static void run(String networkCoordSys, String networkFile, String linksOutputFile, String nodesOutputFile) {
-		run(networkCoordSys, NetworkTools.readNetwork(networkFile), linksOutputFile, nodesOutputFile);
+	public static void run(String networkCoordSys, String networkFile, String linksOutputFile, String nodesOutputFile, boolean addOtherAttributes) {
+		run(networkCoordSys, NetworkTools.readNetwork(networkFile), linksOutputFile, nodesOutputFile, addOtherAttributes);
 	}
 
-	public static void run(String networkCoordSys, String networkFile, String networkOutputFile) {
-		run(networkCoordSys, NetworkTools.readNetwork(networkFile), networkOutputFile);
+	public static void run(String networkCoordSys, String networkFile, String networkOutputFile, boolean addOtherAttributes) {
+		run(networkCoordSys, NetworkTools.readNetwork(networkFile), networkOutputFile, addOtherAttributes);
 	}
 
-	public static void run(String networkCoordSys, Network network, String linksOutputFile, String nodesOutputFile) {
-		Network2Geojson n2g = new Network2Geojson(networkCoordSys, network);
+	public static void run(String networkCoordSys, Network network, String linksOutputFile, String nodesOutputFile, boolean addOtherAttributes) {
+		Network2Geojson n2g = new Network2Geojson(networkCoordSys, network, addOtherAttributes);
 		n2g.writeLinks(linksOutputFile);
 		if(nodesOutputFile != null) {
 			n2g.writeNodes(nodesOutputFile);
 		}
 	}
 
-	public static void run(String networkCoordSys, Network network, String networkOutputFile) {
-		Network2Geojson n2g = new Network2Geojson(networkCoordSys, network);
+	public static void run(String networkCoordSys, Network network, String networkOutputFile, boolean addOtherAttributes) {
+		Network2Geojson n2g = new Network2Geojson(networkCoordSys, network, addOtherAttributes);
 		n2g.writeNetwork(networkOutputFile);
 	}
 
 
 	protected static Logger log = LogManager.getLogger(Network2Geojson.class);
 	private final CoordinateTransformation ct;
-	private Network network;
-	private FeatureCollection linkFeatures = new FeatureCollection();
-	private FeatureCollection nodeFeatures = new FeatureCollection();
+	private final Network network;
+	private final boolean addOtherAttributes;
+	private final FeatureCollection linkFeatures = new FeatureCollection();
+	private final FeatureCollection nodeFeatures = new FeatureCollection();
 	private FeatureCollection networkFeatureCollection;
 
-	public Network2Geojson(String networkCoordSystem, Network network) {
+	public Network2Geojson(String networkCoordSystem, Network network, boolean addOtherAttributes) {
 		this.ct = networkCoordSystem == null ? new IdentityTransformation() : TransformationFactory.getCoordinateTransformation(networkCoordSystem, TransformationFactory.WGS84);
 		this.network = network;
+		this.addOtherAttributes = addOtherAttributes;
 		convertLinks();
 		convertNodes();
 		combineFeatures();
@@ -135,18 +142,24 @@ public class Network2Geojson {
 			f.setProperty("id", link.getId().toString());
 			f.setProperty("length", link.getLength());
 			f.setProperty("freespeed", link.getFreespeed());
-			f.setProperty("capacity", link.getCapacity());
 			f.setProperty("lanes", link.getNumberOfLanes());
 			f.setProperty("fromNode", link.getFromNode().getId().toString());
 			f.setProperty("toNode", link.getToNode().getId().toString());
 			f.setProperty("modes", CollectionUtils.setToString(link.getAllowedModes()));
-			// Oneway
+
 
 			// Also, add other attributes if they exist
-			Attributes atts = link.getAttributes();
-			for (String key : atts.getAsMap().keySet()){
-				if (!Objects.equals(key, "disallowedNextLinks"))  {
-					f.setProperty(key,atts.getAttribute(key));
+			if (this.addOtherAttributes) {
+				f.setProperty("capacity", link.getCapacity());
+				Attributes attrs = link.getAttributes();
+				for (String key : attrs.getAsMap().keySet()) {
+					if (!Objects.equals(key, "disallowedNextLinks")) {
+						if ((attrs.getAttribute(key) != null) &&
+								(attrs.getAttribute(key) instanceof String || attrs.getAttribute(key) instanceof Number)) {
+							// Only add attributes that are strings or numbers
+							f.setProperty(key, attrs.getAttribute(key));
+						}
+					}
 				}
 			}
 			this.linkFeatures.add(f);

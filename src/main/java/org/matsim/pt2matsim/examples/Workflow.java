@@ -43,7 +43,7 @@ public class Workflow {
 		ScheduleTools.writeTransitSchedule(schedule, "output/schedule.xml.gz");
 
 		// Write geojson result
-		Network2Geojson.run(osmConfig.getOutputCoordinateSystem(), network, "output/network.geojson");
+		Network2Geojson.run(osmConfig.getOutputCoordinateSystem(), network, "output/network.geojson", true);
 		Schedule2Geojson.run(osmConfig.getOutputCoordinateSystem(), schedule, "output/schedule.geojson");
 
 		// check schedule
