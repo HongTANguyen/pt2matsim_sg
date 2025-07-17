@@ -421,10 +421,8 @@ public class OsmMultimodalNetworkConverter {
 		String onewayTag = way.getTags().get(Osm.Key.ONEWAY);
 		if (onewayTag != null) {
 			switch (onewayTag) {
-				case Osm.Value.YES -> oneway = true;
-				case "true" -> oneway = true;
-				case "1" -> oneway = true;
-				case "-1" -> {
+				case Osm.Value.YES, "true", "1" -> oneway = true;
+                case "-1" -> {
 					onewayReverse = true;
 					oneway = false;
 				}
@@ -455,6 +453,7 @@ public class OsmMultimodalNetworkConverter {
 		Result psvLanesBackward = calculateBlockingCount(way, false, oneway || onewayReverse, laneCountDefault);
 
 		laneCountBackward -= psvLanesBackward.count;
+
 		// CAPACITY
 		//double capacity = laneCountDefault * laneCapacity;
 
@@ -481,6 +480,10 @@ public class OsmMultimodalNetworkConverter {
 		if (length == 0.0) {
 			log.warn("Attempting to create a link of length 0.0, which will mess up the routing. Fixing to 1.0!");
 			length = 1.0;
+		}
+
+		if ((laneCountForward + laneCountBackward > laneCountDefault) && !oneway) {
+			laneCapacity = (double) (int) laneCapacity / 2.0; // if we have more than one lane in both directions, we assume that the capacity is shared
 		}
 
 		// CREATE LINK
@@ -516,7 +519,7 @@ public class OsmMultimodalNetworkConverter {
 
 				if (psvLanesForward.count > 0 && modes.contains("car")) {
 
-					Id<Link> linkIdBus = Id.create(String.valueOf(this.id) + OSM_SPECIAL_LANE, Link.class);
+					Id<Link> linkIdBus = Id.create(this.id + OSM_SPECIAL_LANE, Link.class);
 					Link lBus = network.getFactory().createLink(linkIdBus, network.getNodes().get(fromId), network.getNodes().get(toId));
 					lBus.setLength(length);
 					lBus.setFreespeed(freeSpeedForward);
@@ -569,15 +572,18 @@ public class OsmMultimodalNetworkConverter {
 				l.setCapacity(laneCountBackward * laneCapacity);
 				l.setNumberOfLanes(laneCountBackward);
 				l.setAllowedModes(modes);
-				if (config.parseTurnRestrictions && !osmTurnRestrictions.isEmpty()) {
-					// filter turn restrictions to those for which this link could be the from link
-					List<OsmTurnRestriction> thisOsmTurnRestrictions = osmTurnRestrictions.stream()
-							.filter(tr -> tr.viaNodeId() == null || tr.viaNodeId().toString().equals(fromId.toString()))
-							.toList();
-					log.debug("Link {}: {}/{} turn restrictions attached", linkId, thisOsmTurnRestrictions.size(),
-							osmTurnRestrictions.size());
-					l.getAttributes().putAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME, thisOsmTurnRestrictions);
-				}
+				if (config.parseTurnRestrictions) {
+                    assert osmTurnRestrictions != null;
+                    if (!osmTurnRestrictions.isEmpty()) {
+// filter turn restrictions to those for which this link could be the from link
+                        List<OsmTurnRestriction> thisOsmTurnRestrictions = osmTurnRestrictions.stream()
+                                .filter(tr -> tr.viaNodeId() == null || tr.viaNodeId().toString().equals(fromId.toString()))
+                                .toList();
+                        log.debug("Link {}: {}/{} turn restrictions attached", linkId, thisOsmTurnRestrictions.size(),
+                                osmTurnRestrictions.size());
+                        l.getAttributes().putAttribute(OSM_TURN_RESTRICTION_ATTRIBUTE_NAME, thisOsmTurnRestrictions);
+                    }
+                }
 
 				network.addLink(l);
 				osmIds.put(l.getId(), way.getId());

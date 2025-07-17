@@ -33,7 +33,7 @@ import com.google.common.collect.Lists;
 public class LinkGeometryExporter {
 
 	private final char SEPARATOR = ',';
-	private Map<Id<Link>, LinkDefinition> linkDefinitions = new TreeMap<>();
+	private final Map<Id<Link>, LinkDefinition> linkDefinitions = new TreeMap<>();
 
 	public void addLinkDefinition(Id<Link> linkId, LinkDefinition definition) {
 		linkDefinitions.put(linkId, definition);
@@ -43,7 +43,7 @@ public class LinkGeometryExporter {
 		Collection<Id<Link>> toBeRemoved = linkDefinitions.keySet().parallelStream() //
 				.filter(id -> !keepLinkIds.contains(id)) //
 				.collect(Collectors.toSet());
-		toBeRemoved.forEach(id -> linkDefinitions.remove(id));
+		toBeRemoved.forEach(linkDefinitions::remove);
 	}
 
 	public void writeToFile(Path outputPath) throws IOException {

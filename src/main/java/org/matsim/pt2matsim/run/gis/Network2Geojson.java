@@ -32,9 +32,11 @@ import org.matsim.core.utils.geometry.transformations.IdentityTransformation;
 import org.matsim.core.utils.geometry.transformations.TransformationFactory;
 import org.matsim.pt2matsim.tools.GeojsonTools;
 import org.matsim.pt2matsim.tools.NetworkTools;
+import org.matsim.utils.objectattributes.attributable.Attributes;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author polettif
@@ -138,6 +140,15 @@ public class Network2Geojson {
 			f.setProperty("fromNode", link.getFromNode().getId().toString());
 			f.setProperty("toNode", link.getToNode().getId().toString());
 			f.setProperty("modes", CollectionUtils.setToString(link.getAllowedModes()));
+			// Oneway
+
+			// Also, add other attributes if they exist
+			Attributes atts = link.getAttributes();
+			for (String key : atts.getAsMap().keySet()){
+				if (!Objects.equals(key, "disallowedNextLinks"))  {
+					f.setProperty(key,atts.getAttribute(key));
+				}
+			}
 			this.linkFeatures.add(f);
 		}
 	}
