@@ -193,7 +193,7 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
                 }
             });
         }
-        log.info("Adjusted link speeds for {} links in the network.", adjustedCount.get());
+        log.info("Adjusted link speeds for walking and cycling on bridges: {}", adjustedCount.get());
     }
 
     /**
