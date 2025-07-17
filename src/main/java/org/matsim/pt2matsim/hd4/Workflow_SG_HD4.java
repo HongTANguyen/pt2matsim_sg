@@ -2,7 +2,6 @@ package org.matsim.pt2matsim.hd4;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.checkerframework.checker.units.qual.N;
 import org.geotools.api.data.FileDataStore;
 import org.geotools.api.data.FileDataStoreFinder;
 import org.geotools.api.data.SimpleFeatureSource;
@@ -21,6 +20,7 @@ import org.matsim.pt2matsim.config.OsmConverterConfigGroup;
 import org.matsim.pt2matsim.run.Osm2MultimodalNetwork;
 import org.matsim.pt2matsim.run.gis.Network2Geojson;
 import org.matsim.pt2matsim.tools.NetworkTools;
+import org.matsim.utils.objectattributes.attributable.Attributes;
 import picocli.CommandLine;
 
 import java.io.File;
@@ -31,6 +31,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Workflow_SG class handles the workflow for processing and mapping public transit data in Singapore.
@@ -121,6 +122,9 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
         log.info("==============================================================");
 
         Network network = NetworkTools.readNetwork(osmConfig.getOutputNetworkFile());
+        // Adjust network to ensure link speeds are set correctly for walking and cycling
+        adjustLinkSpeeds(network, 5.0);
+
 
         // Ensure directory exists for geojson file
         ensureDirectoryExists(osmConfig.getOutputNetworkFile().replace(".xml.gz", ".geojson"));
@@ -155,6 +159,40 @@ public class Workflow_SG_HD4 implements MATSimAppCommand {
         log.info("===========================================================");
 
         return 0;
+    }
+
+    private void adjustLinkSpeeds(Network network, double maxWalkingSpeed_kmh) {
+        AtomicInteger adjustedCount = new AtomicInteger();
+        for (Link link : network.getLinks().values()) {
+            Attributes attrs = link.getAttributes();
+            attrs.getAsMap().forEach((key, value) -> {
+                // Check if it's a footway on a bridge (with null check)
+                if (key.equals("osm:way:highway") && value.equals("footway")) {
+                    Object bridgeAttr = attrs.getAttribute("osm:way:bridge");
+                    if (bridgeAttr != null && bridgeAttr.equals("yes")) {
+                        // Adjust cycling speed for cycleways on bridges
+                        link.setFreespeed(maxWalkingSpeed_kmh / 3.6); // Convert km/h to m/s
+//                        log.info("Adjusted freespeed for cycleway bridge link: {}", link.getId());
+                        adjustedCount.getAndIncrement();
+                    }
+                }
+
+                // Handle maxspeed attributes
+                if (key.contains("maxspeed") && value instanceof Number) {
+                    if (key.contains("official")) {
+                        // Adjust cycling speed for links with maxspeed
+                        double maxSpeed = ((Number) value).doubleValue();
+                        link.setFreespeed(maxSpeed / 3.6); // Convert km/h to m/s
+                        adjustedCount.getAndIncrement();
+                    } else if (key.contains("advisory")) {
+                        // Adjust walking speed for links with maxspeed
+                        double maxSpeed = ((Number) value).doubleValue();
+                        link.setFreespeed(maxSpeed / 3.6); // Convert km/h to m/s
+                    }
+                }
+            });
+        }
+        log.info("Adjusted link speeds for walking and cycling on bridges: {}", adjustedCount.get());
     }
 
     /**
