@@ -4,6 +4,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
@@ -46,6 +47,11 @@ public class LinkGeometryExporter {
 	}
 
 	public void writeToFile(Path outputPath) throws IOException {
+		// Ensure parent directories exist
+		if (outputPath.getParent() != null) {
+			Files.createDirectories(outputPath.getParent());
+		}
+
 		try (BufferedWriter writer = Files.newBufferedWriter(outputPath)) {
 			writer.write("LinkId" + SEPARATOR + "Geometry\n");
 			for (Entry<Id<Link>, LinkDefinition> entry : linkDefinitions.entrySet()) {
@@ -55,6 +61,11 @@ public class LinkGeometryExporter {
 				}
 			}
 		}
+	}
+
+	public void writeToFile(String fileName) throws IOException {
+		Path path = Paths.get(fileName);
+		writeToFile(path);
 	}
 
 	private static Optional<String> toWkt(LinkDefinition linkDefinition) {
@@ -82,16 +93,7 @@ public class LinkGeometryExporter {
 		return "LINESTRING(" + Joiner.on(',').join(coords) + ")";
 	}
 
-	public static class LinkDefinition {
-		public final Osm.Node fromNode;
-		public final Osm.Node toNode;
-		public final Osm.Way way;
-
-		public LinkDefinition(Node fromNode, Node toNode, Way way) {
-			this.fromNode = fromNode;
-			this.toNode = toNode;
-			this.way = way;
-		}
+	public record LinkDefinition(Node fromNode, Node toNode, Way way) {
 	}
 
 }

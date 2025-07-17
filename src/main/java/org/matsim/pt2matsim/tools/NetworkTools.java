@@ -83,7 +83,7 @@ public final class NetworkTools {
 	}
 
 	public static void transformNetworkFile(String networkFile, String fromCoordinateSystem, String toCoordinateSystem) {
-		log.info("... Transformig network from " + fromCoordinateSystem + " to " + toCoordinateSystem);
+        log.info("... Transforming network from {} to {}", fromCoordinateSystem, toCoordinateSystem);
 		Network network = readNetwork(networkFile);
 		transformNetwork(network, fromCoordinateSystem, toCoordinateSystem);
 		writeNetwork(network, networkFile);
@@ -110,7 +110,7 @@ public final class NetworkTools {
 
 		Collection<Node> nearestNodes = NetworkUtils.getNearestNodes(network, coord, nodeSearchRadius);
 
-		while(nearestNodes.size() == 0) {
+		while(nearestNodes.isEmpty()) {
 			nodeSearchRadius *= 2;
 			nearestNodes = NetworkUtils.getNearestNodes(network, coord, nodeSearchRadius);
 		}
