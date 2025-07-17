@@ -921,14 +921,12 @@ public class OsmMultimodalNetworkConverter {
 			// way id
 			link.getAttributes().putAttribute(OsmConverterConfigGroup.LINK_ATTRIBUTE_WAY_ID, Long.parseLong(way.getId().toString()));
 
-			// default tags
+			// all tags
 			for (Map.Entry<String, String> t : way.getTags().entrySet()) {
-				if (Osm.Key.DEFAULT_KEYS.contains(t.getKey())) {
-					String key = OsmConverterConfigGroup.LINK_ATTRIBUTE_WAY_PREFIX + t.getKey();
-					String val = t.getValue();
-					link.getAttributes().putAttribute(key.replace("&", "AND"), val.replace("&", "AND"));
-				}
-			}
+                String key = OsmConverterConfigGroup.LINK_ATTRIBUTE_WAY_PREFIX + t.getKey();
+                String val = t.getValue();
+                link.getAttributes().putAttribute(key.replace("&", "AND"), val.replace("&", "AND"));
+            }
 
 			// relation info
 			for (Osm.Relation rel : way.getRelations().values()) {
